@@ -39,7 +39,8 @@ export class CortexAgent extends AIChatAgent<Env> {
     this.semanticMemory = new SemanticMemory(
       this.env.DB,
       this.env.AI,
-      this.env.EMBEDDING_MODEL
+      this.env.EMBEDDING_MODEL,
+      this.env.VECTORIZE
     );
     this.proceduralMemory = new ProceduralMemory(this.sql.bind(this));
 
