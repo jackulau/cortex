@@ -51,3 +51,47 @@ export function chunkText(
 
   return chunks;
 }
+
+/**
+ * Embed a full document by chunking, batch-embedding, and averaging.
+ *
+ * Returns individual chunk embeddings plus an averaged document-level embedding
+ * for document-level similarity comparisons.
+ */
+export async function embedDocument(
+  ai: Ai,
+  model: string,
+  content: string
+): Promise<{ chunks: string[]; embeddings: number[][]; avgEmbedding: number[] }> {
+  const chunks = chunkText(content);
+  const embeddings = await generateEmbeddings(ai, model, chunks);
+
+  // Compute average embedding across all chunks for document-level similarity
+  const avgEmbedding = averageEmbeddings(embeddings);
+
+  return { chunks, embeddings, avgEmbedding };
+}
+
+/**
+ * Compute the element-wise average of multiple embedding vectors.
+ */
+function averageEmbeddings(embeddings: number[][]): number[] {
+  if (embeddings.length === 0) return [];
+  if (embeddings.length === 1) return embeddings[0];
+
+  const dim = embeddings[0].length;
+  const avg = new Array<number>(dim).fill(0);
+
+  for (const emb of embeddings) {
+    for (let i = 0; i < dim; i++) {
+      avg[i] += emb[i];
+    }
+  }
+
+  const count = embeddings.length;
+  for (let i = 0; i < dim; i++) {
+    avg[i] /= count;
+  }
+
+  return avg;
+}
