@@ -7,7 +7,7 @@ import { WorkingMemory } from "@/memory/working";
 import { EpisodicMemory } from "@/memory/episodic";
 import { SemanticMemory } from "@/memory/semantic";
 import { ProceduralMemory } from "@/memory/procedural";
-import { consolidateTurn } from "@/memory/consolidation";
+import type { ConsolidationMessage } from "@/monitor/queue-types";
 import { buildSystemPrompt } from "@/agent/prompts/system";
 import { retrieveMemoryContext } from "@/agent/prompts/memory-context";
 import { createMemoryTools } from "@/agent/tools/memory-tools";
@@ -161,14 +161,13 @@ export class CortexAgent extends AIChatAgent<Env> {
           turnCount: turnIndex + 2,
         });
 
-        // Post-turn consolidation (fire and forget)
-        consolidateTurn(
-          this.env.AI,
-          this.env.CHAT_MODEL,
-          this.semanticMemory,
-          userText,
-          streamResult.text
-        ).catch(() => {});
+        // Post-turn consolidation via queue (reliable retries)
+        await this.env.CONSOLIDATION_QUEUE.send({
+          type: "consolidate",
+          userMessage: userText,
+          assistantMessage: streamResult.text,
+          sessionId,
+        } satisfies ConsolidationMessage);
 
         // Call the provided onFinish callback
         onFinish(streamResult as any);
