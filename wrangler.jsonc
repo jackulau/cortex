@@ -1,0 +1,51 @@
+{
+  "name": "cortex",
+  "main": "src/server.ts",
+  "compatibility_date": "2025-03-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Durable Objects
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CortexAgent",
+        "class_name": "CortexAgent"
+      }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["CortexAgent"]
+    }
+  ],
+
+  // D1 Database
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cortex-db",
+      "database_id": "2839c0c7-d433-4ce5-9e06-6f7cbee18528"
+    }
+  ],
+
+  // R2 Storage
+  "r2_buckets": [
+    {
+      "binding": "STORAGE",
+      "bucket_name": "cortex-storage"
+    }
+  ],
+
+  // Workers AI
+  "ai": {
+    "binding": "AI"
+  },
+
+  // Environment variables
+  "vars": {
+    "EMBEDDING_MODEL": "@cf/baai/bge-large-en-v1.5",
+    "CHAT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+  }
+}

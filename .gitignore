@@ -1,0 +1,12 @@
+node_modules/
+dist/
+public/
+.wrangler/
+.dev.vars
+.DS_Store
+*.log
+worker-configuration.d.ts
+
+# Claude workspace (auto-added, never commit)
+.claude-workspace
+.claude/
