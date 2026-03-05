@@ -43,6 +43,16 @@
     "binding": "AI"
   },
 
+  // Browser Rendering (Phase 2)
+  "browser": {
+    "binding": "BROWSER"
+  },
+
+  // Cron triggers (Phase 3 — scheduled crawler every 6 hours)
+  "triggers": {
+    "crons": ["0 */6 * * *"]
+  },
+
   // Environment variables
   "vars": {
     "EMBEDDING_MODEL": "@cf/baai/bge-large-en-v1.5",

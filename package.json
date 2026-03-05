@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@cloudflare/ai-chat": "^0.1.8",
+    "@cloudflare/puppeteer": "^0.0.14",
     "@cloudflare/vite-plugin": "^1.26.0",
     "@cloudflare/workers-types": "^4.20250303.0",
     "agents": "^0.7.3",

@@ -82,4 +82,9 @@ export interface Env {
   AI: Ai;
   EMBEDDING_MODEL: string;
   CHAT_MODEL: string;
+  // Phase 2: Browser rendering + Discord
+  BROWSER: Fetcher;
+  DISCORD_PUBLIC_KEY: string;
+  DISCORD_APP_ID: string;
+  DISCORD_BOT_TOKEN: string;
 }
