@@ -16,6 +16,12 @@ import { createWatchTools } from "@/agent/tools/watch-tools";
 import { createExportTools } from "@/agent/tools/export-tools";
 import { WatchListManager } from "@/monitor/watchlist";
 import { DigestManager } from "@/monitor/digest";
+import {
+  KVCache,
+  CacheKeys,
+  CacheTTL,
+  CachePrefixes,
+} from "@/cache/kv-cache";
 
 export class CortexAgent extends AIChatAgent<Env> {
   private workingMemory!: WorkingMemory;
@@ -24,6 +30,7 @@ export class CortexAgent extends AIChatAgent<Env> {
   private proceduralMemory!: ProceduralMemory;
   private watchListManager!: WatchListManager;
   private digestManager!: DigestManager;
+  private cache!: KVCache;
   private initialized = false;
 
   private ensureInit() {
@@ -46,6 +53,9 @@ export class CortexAgent extends AIChatAgent<Env> {
     // Initialize Phase 3 managers
     this.watchListManager = new WatchListManager(this.env.DB);
     this.digestManager = new DigestManager(this.env.DB);
+
+    // Initialize KV cache layer
+    this.cache = new KVCache(this.env.CACHE);
 
     this.initialized = true;
   }
@@ -161,6 +171,12 @@ export class CortexAgent extends AIChatAgent<Env> {
           turnCount: turnIndex + 2,
         });
 
+        // Invalidate caches after new turns are logged
+        await Promise.all([
+          this.cache.invalidatePrefix(CachePrefixes.MEMORIES),
+          this.cache.invalidatePrefix(CachePrefixes.SESSIONS),
+        ]);
+
         // Post-turn consolidation (fire and forget)
         consolidateTurn(
           this.env.AI,
@@ -257,12 +273,20 @@ export class CortexAgent extends AIChatAgent<Env> {
       | null;
     const limit = parseInt(url.searchParams.get("limit") || "50", 10);
 
-    const memories = await this.semanticMemory.list({
-      type: type || undefined,
-      limit,
-    });
+    const cacheKey = CacheKeys.memoriesList(type || undefined, limit);
+    const data = await this.cache.getOrSet(
+      cacheKey,
+      async () => {
+        const memories = await this.semanticMemory.list({
+          type: type || undefined,
+          limit,
+        });
+        return { memories, count: memories.length };
+      },
+      CacheTTL.MEMORIES_LIST
+    );
 
-    return Response.json({ memories, count: memories.length });
+    return Response.json(data);
   }
 
   private async apiDeleteMemory(url: URL): Promise<Response> {
@@ -271,6 +295,10 @@ export class CortexAgent extends AIChatAgent<Env> {
       return Response.json({ error: "Missing id parameter" }, { status: 400 });
     }
     const deleted = await this.semanticMemory.delete(id);
+
+    // Invalidate memories cache after deletion
+    await this.cache.invalidatePrefix(CachePrefixes.MEMORIES);
+
     return Response.json({ success: deleted });
   }
 
@@ -296,11 +324,11 @@ export class CortexAgent extends AIChatAgent<Env> {
     });
   }
 
-  private apiSessions(url: URL): Response {
+  private async apiSessions(url: URL): Promise<Response> {
     const sessionId = url.searchParams.get("id");
 
     if (sessionId) {
-      // Get turns for a specific session
+      // Get turns for a specific session (not cached — specific session lookup)
       const turns = this.episodicMemory.getSession(sessionId);
       return Response.json({
         sessionId,
@@ -313,38 +341,65 @@ export class CortexAgent extends AIChatAgent<Env> {
       });
     }
 
-    // List all sessions
+    // List all sessions (cached)
     const limit = parseInt(url.searchParams.get("limit") || "20", 10);
-    const sessions = this.episodicMemory.listSessions(limit);
-    return Response.json({
-      sessions: sessions.map((s) => ({
-        sessionId: s.sessionId,
-        startedAt: s.startedAt,
-        endedAt: s.endedAt,
-        topics:
-          typeof s.topics === "string" ? JSON.parse(s.topics) : s.topics || [],
-        turnCount: s.turnCount,
-        summary: s.summary,
-      })),
-      count: sessions.length,
-    });
+    const cacheKey = CacheKeys.sessionsList(limit);
+    const data = await this.cache.getOrSet(
+      cacheKey,
+      () => {
+        const sessions = this.episodicMemory.listSessions(limit);
+        return {
+          sessions: sessions.map((s) => ({
+            sessionId: s.sessionId,
+            startedAt: s.startedAt,
+            endedAt: s.endedAt,
+            topics:
+              typeof s.topics === "string"
+                ? JSON.parse(s.topics)
+                : s.topics || [],
+            turnCount: s.turnCount,
+            summary: s.summary,
+          })),
+          count: sessions.length,
+        };
+      },
+      CacheTTL.SESSIONS_LIST
+    );
+
+    return Response.json(data);
   }
 
-  private apiListRules(): Response {
-    const rules = this.proceduralMemory.getAll();
-    return Response.json({ rules, count: rules.length });
+  private async apiListRules(): Promise<Response> {
+    const cacheKey = CacheKeys.rulesAll();
+    const data = await this.cache.getOrSet(
+      cacheKey,
+      () => {
+        const rules = this.proceduralMemory.getAll();
+        return { rules, count: rules.length };
+      },
+      CacheTTL.RULES
+    );
+    return Response.json(data);
   }
 
   private async apiWatchList(request: Request, url: URL): Promise<Response> {
     const method = request.method;
 
     if (method === "GET") {
-      const items = await this.watchListManager.list(false);
-      return Response.json({ items, count: items.length });
+      const cacheKey = CacheKeys.watchlistAll();
+      const data = await this.cache.getOrSet(
+        cacheKey,
+        async () => {
+          const items = await this.watchListManager.list(false);
+          return { items, count: items.length };
+        },
+        CacheTTL.WATCHLIST
+      );
+      return Response.json(data);
     }
 
     if (method === "POST") {
-      const body = await request.json() as {
+      const body = (await request.json()) as {
         url: string;
         label: string;
         frequency: "hourly" | "daily" | "weekly";
@@ -354,6 +409,7 @@ export class CortexAgent extends AIChatAgent<Env> {
         label: body.label,
         frequency: body.frequency || "daily",
       });
+      await this.cache.invalidatePrefix(CachePrefixes.WATCHLIST);
       return Response.json({ success: true, id });
     }
 
@@ -366,12 +422,14 @@ export class CortexAgent extends AIChatAgent<Env> {
         );
       }
       const success = await this.watchListManager.remove(id);
+      await this.cache.invalidatePrefix(CachePrefixes.WATCHLIST);
       return Response.json({ success });
     }
 
     if (method === "PATCH") {
-      const body = await request.json() as { id: string; active: boolean };
+      const body = (await request.json()) as { id: string; active: boolean };
       await this.watchListManager.setActive(body.id, body.active);
+      await this.cache.invalidatePrefix(CachePrefixes.WATCHLIST);
       return Response.json({ success: true });
     }
 
@@ -379,15 +437,23 @@ export class CortexAgent extends AIChatAgent<Env> {
   }
 
   private async apiGetDigest(): Promise<Response> {
-    const entries = await this.digestManager.getUndelivered();
-    return Response.json({
-      entries: entries.map((e) => ({
-        id: e.id,
-        watchItemId: e.watchItemId,
-        summary: e.summary,
-        createdAt: e.createdAt,
-      })),
-      count: entries.length,
-    });
+    const cacheKey = CacheKeys.digestUndelivered();
+    const data = await this.cache.getOrSet(
+      cacheKey,
+      async () => {
+        const entries = await this.digestManager.getUndelivered();
+        return {
+          entries: entries.map((e) => ({
+            id: e.id,
+            watchItemId: e.watchItemId,
+            summary: e.summary,
+            createdAt: e.createdAt,
+          })),
+          count: entries.length,
+        };
+      },
+      CacheTTL.DIGEST
+    );
+    return Response.json(data);
   }
 }
