@@ -5,4 +5,4 @@ export { createExportTools } from "./export-tools";
 export { createResearchTools } from "./research-tools";
 
 // Phase 3
-// export { createWatchTools } from "./watch-tools";
+export { createWatchTools } from "./watch-tools";
