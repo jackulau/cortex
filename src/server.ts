@@ -3,6 +3,9 @@ import type { Env } from "@/shared/types";
 import { handleDiscordInteraction } from "@/discord/index";
 import { mcpHandler } from "@/mcp/index";
 import { runMonitoringCycle } from "@/monitor/crawler";
+import { processCrawlMessage } from "@/monitor/crawl-consumer";
+import { processConsolidationMessage } from "@/memory/consolidation-consumer";
+import type { CrawlMessage, ConsolidationMessage } from "@/monitor/queue-types";
 
 export { CortexAgent } from "@/agent/cortex-agent";
 
@@ -58,5 +61,29 @@ export default {
     ctx: ExecutionContext
   ): Promise<void> {
     ctx.waitUntil(runMonitoringCycle(env));
+  },
+
+  // Queue handler — processes crawl and consolidation messages
+  async queue(
+    batch: MessageBatch<CrawlMessage | ConsolidationMessage>,
+    env: Env,
+    _ctx: ExecutionContext
+  ): Promise<void> {
+    for (const msg of batch.messages) {
+      try {
+        if (msg.body.type === "crawl") {
+          await processCrawlMessage(msg.body, env);
+        } else if (msg.body.type === "consolidate") {
+          await processConsolidationMessage(msg.body, env);
+        }
+        msg.ack();
+      } catch (err) {
+        console.error(
+          `Queue processing error for ${msg.body.type}:`,
+          err instanceof Error ? err.message : err
+        );
+        msg.retry();
+      }
+    }
   },
 };
