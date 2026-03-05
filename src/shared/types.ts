@@ -87,4 +87,11 @@ export interface Env {
   DISCORD_PUBLIC_KEY: string;
   DISCORD_APP_ID: string;
   DISCORD_BOT_TOKEN: string;
+  // Phase 5: Platform bindings
+  VECTORIZE: VectorizeIndex;
+  CACHE: KVNamespace;
+  CRAWL_QUEUE: Queue;
+  CONSOLIDATION_QUEUE: Queue;
+  ANALYTICS: AnalyticsEngineDataset;
+  RATE_LIMITER: RateLimit;
 }

@@ -17,6 +17,13 @@ describe("Env interface", () => {
       DISCORD_PUBLIC_KEY: "test-public-key",
       DISCORD_APP_ID: "test-app-id",
       DISCORD_BOT_TOKEN: "test-bot-token",
+      // Phase 5: Platform bindings
+      VECTORIZE: {} as VectorizeIndex,
+      CACHE: {} as KVNamespace,
+      CRAWL_QUEUE: {} as Queue,
+      CONSOLIDATION_QUEUE: {} as Queue,
+      ANALYTICS: {} as AnalyticsEngineDataset,
+      RATE_LIMITER: {} as RateLimit,
     };
 
     expect(mockEnv.BROWSER).toBeDefined();
@@ -27,5 +34,12 @@ describe("Env interface", () => {
     expect(mockEnv.DB).toBeDefined();
     expect(mockEnv.STORAGE).toBeDefined();
     expect(mockEnv.AI).toBeDefined();
+    // Phase 5 bindings
+    expect(mockEnv.VECTORIZE).toBeDefined();
+    expect(mockEnv.CACHE).toBeDefined();
+    expect(mockEnv.CRAWL_QUEUE).toBeDefined();
+    expect(mockEnv.CONSOLIDATION_QUEUE).toBeDefined();
+    expect(mockEnv.ANALYTICS).toBeDefined();
+    expect(mockEnv.RATE_LIMITER).toBeDefined();
   });
 });

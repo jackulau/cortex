@@ -48,6 +48,71 @@
     "binding": "BROWSER"
   },
 
+  // Vectorize — semantic memory vector index
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "cortex-memories"
+    }
+  ],
+
+  // KV — response and embedding cache
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "PLACEHOLDER_CACHE_KV_ID"
+    }
+  ],
+
+  // Queues — async crawl and consolidation pipelines
+  "queues": {
+    "producers": [
+      {
+        "binding": "CRAWL_QUEUE",
+        "queue": "cortex-crawl"
+      },
+      {
+        "binding": "CONSOLIDATION_QUEUE",
+        "queue": "cortex-consolidate"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "cortex-crawl",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30
+      },
+      {
+        "queue": "cortex-consolidate",
+        "max_batch_size": 5,
+        "max_batch_timeout": 60
+      }
+    ]
+  },
+
+  // Analytics Engine — event tracking
+  "analytics_engine_datasets": [
+    {
+      "binding": "ANALYTICS",
+      "dataset": "cortex_events"
+    }
+  ],
+
+  // Rate Limiting
+  "unsafe": {
+    "bindings": [
+      {
+        "type": "ratelimit",
+        "name": "RATE_LIMITER",
+        "namespace_id": "cortex-rl",
+        "simple": {
+          "limit": 100,
+          "period": 60
+        }
+      }
+    ]
+  },
+
   // Cron triggers (Phase 3 — scheduled crawler every 6 hours)
   "triggers": {
     "crons": ["0 */6 * * *"]

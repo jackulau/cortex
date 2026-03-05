@@ -41,4 +41,53 @@ describe("Wrangler Configuration", () => {
     expect(config.durable_objects).toBeDefined();
     expect(config.durable_objects.bindings[0].name).toBe("CortexAgent");
   });
+
+  // Phase 5: New platform bindings
+
+  it("has Vectorize index binding", () => {
+    expect(config.vectorize).toBeDefined();
+    expect(config.vectorize[0].binding).toBe("VECTORIZE");
+    expect(config.vectorize[0].index_name).toBe("cortex-memories");
+  });
+
+  it("has KV namespace binding for CACHE", () => {
+    expect(config.kv_namespaces).toBeDefined();
+    expect(config.kv_namespaces[0].binding).toBe("CACHE");
+  });
+
+  it("has Queue producer bindings", () => {
+    expect(config.queues).toBeDefined();
+    expect(config.queues.producers).toBeDefined();
+    const crawlProducer = config.queues.producers.find(
+      (p: { binding: string }) => p.binding === "CRAWL_QUEUE"
+    );
+    const consolidationProducer = config.queues.producers.find(
+      (p: { binding: string }) => p.binding === "CONSOLIDATION_QUEUE"
+    );
+    expect(crawlProducer).toBeDefined();
+    expect(crawlProducer.queue).toBe("cortex-crawl");
+    expect(consolidationProducer).toBeDefined();
+    expect(consolidationProducer.queue).toBe("cortex-consolidate");
+  });
+
+  it("has Queue consumer bindings", () => {
+    expect(config.queues.consumers).toBeDefined();
+    expect(config.queues.consumers.length).toBe(2);
+  });
+
+  it("has Analytics Engine dataset binding", () => {
+    expect(config.analytics_engine_datasets).toBeDefined();
+    expect(config.analytics_engine_datasets[0].binding).toBe("ANALYTICS");
+    expect(config.analytics_engine_datasets[0].dataset).toBe("cortex_events");
+  });
+
+  it("has Rate Limiter binding in unsafe bindings", () => {
+    expect(config.unsafe).toBeDefined();
+    expect(config.unsafe.bindings).toBeDefined();
+    const rateLimiter = config.unsafe.bindings.find(
+      (b: { name: string }) => b.name === "RATE_LIMITER"
+    );
+    expect(rateLimiter).toBeDefined();
+    expect(rateLimiter.type).toBe("ratelimit");
+  });
 });
