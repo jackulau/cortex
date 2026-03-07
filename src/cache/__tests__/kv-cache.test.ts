@@ -218,17 +218,17 @@ describe("KVCache", () => {
 // ── CacheKeys ──────────────────────────────────────────────────
 describe("CacheKeys", () => {
   it("generates correct memories list key with type", () => {
-    expect(CacheKeys.memoriesList("fact", 50)).toBe("memories:list:fact:50");
+    expect(CacheKeys.memoriesList("fact", 50)).toBe("memories:list:fact:50:first");
   });
 
   it("generates correct memories list key without type", () => {
     expect(CacheKeys.memoriesList(undefined, 50)).toBe(
-      "memories:list:all:50"
+      "memories:list:all:50:first"
     );
   });
 
   it("generates correct sessions list key", () => {
-    expect(CacheKeys.sessionsList(20)).toBe("sessions:list:20");
+    expect(CacheKeys.sessionsList(20)).toBe("sessions:list:20:first");
   });
 
   it("generates correct rules key", () => {

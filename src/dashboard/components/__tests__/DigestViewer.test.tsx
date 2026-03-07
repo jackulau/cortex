@@ -139,7 +139,7 @@ describe("DigestViewer — data handling and grouping", () => {
   describe("Change indicator logic", () => {
     it("identifies changed vs unchanged entries", () => {
       const hasChanges = (changes: string | null | undefined) =>
-        changes != null && changes !== "unchanged";
+        changes != null && changes !== "unchanged" && changes !== "";
 
       expect(hasChanges("Page title changed")).toBe(true);
       expect(hasChanges("unchanged")).toBe(false);

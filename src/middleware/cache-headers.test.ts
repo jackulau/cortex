@@ -115,10 +115,10 @@ describe("applyCacheHeaders", () => {
   });
 
   it("preserves status code", () => {
-    const original = new Response("not modified", { status: 304 });
+    const original = new Response(null, { status: 301, headers: { Location: "/new" } });
     const result = applyCacheHeaders(original, "/index.html");
 
-    expect(result.status).toBe(304);
+    expect(result.status).toBe(301);
     expect(result.headers.get("Cache-Control")).toBe(
       "public, max-age=0, must-revalidate"
     );

@@ -1,4 +1,29 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Mock Cloudflare-specific modules that use cloudflare: protocol (not available in Node.js)
+vi.mock("agents", () => ({
+  Agent: class {},
+  __DO_NOT_USE_WILL_BREAK__agentContext: {},
+  getAgentByName: vi.fn(),
+  routeAgentRequest: vi.fn(),
+}));
+
+vi.mock("agents/mcp", () => ({
+  createMcpHandler: vi.fn().mockReturnValue(vi.fn()),
+}));
+
+vi.mock("@cloudflare/ai-chat", () => ({
+  AIChatAgent: class {
+    static options = {};
+    sql() { return []; }
+  },
+}));
+
+vi.mock("cloudflare:workers", () => ({
+  WorkflowEntrypoint: class {},
+  WorkflowStep: class {},
+  WorkflowEvent: class {},
+}));
 
 describe("Integration Wiring", () => {
   describe("Server exports", () => {
@@ -60,10 +85,10 @@ describe("Integration Wiring", () => {
       expect(mod.DigestManager).toBeDefined();
     });
 
-    it("runMonitoringCycle is importable", async () => {
-      const mod = await import("../monitor/crawler");
-      expect(mod.runMonitoringCycle).toBeDefined();
-      expect(typeof mod.runMonitoringCycle).toBe("function");
+    it("WatchListManager has updateLastChecked method", async () => {
+      const mod = await import("../monitor/watchlist");
+      const wlm = new (mod.WatchListManager as any)({} as any);
+      expect(typeof wlm.updateLastChecked).toBe("function");
     });
   });
 
@@ -76,10 +101,10 @@ describe("Integration Wiring", () => {
   });
 
   describe("MCP", () => {
-    it("mcpHandler is importable", async () => {
+    it("createCortexMcpHandler is importable", async () => {
       const mod = await import("../mcp/index");
-      expect(mod.mcpHandler).toBeDefined();
-      expect(typeof mod.mcpHandler).toBe("function");
+      expect(mod.createCortexMcpHandler).toBeDefined();
+      expect(typeof mod.createCortexMcpHandler).toBe("function");
     });
   });
 

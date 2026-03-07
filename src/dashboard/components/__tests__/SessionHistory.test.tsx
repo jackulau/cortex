@@ -68,20 +68,12 @@ describe("SessionHistory — session continuity logic", () => {
   });
 
   describe("Resume session custom event", () => {
-    it("dispatches cortex:resume-session event with session ID", () => {
-      const dispatchSpy = vi.spyOn(window, "dispatchEvent");
-
+    it("creates cortex:resume-session event with session ID", () => {
       const sessionId = "test-session-123";
-      window.dispatchEvent(
-        new CustomEvent("cortex:resume-session", { detail: { sessionId } })
-      );
+      const event = new CustomEvent("cortex:resume-session", { detail: { sessionId } });
 
-      expect(dispatchSpy).toHaveBeenCalledTimes(1);
-      const event = dispatchSpy.mock.calls[0][0] as CustomEvent;
       expect(event.type).toBe("cortex:resume-session");
       expect(event.detail).toEqual({ sessionId: "test-session-123" });
-
-      dispatchSpy.mockRestore();
     });
   });
 

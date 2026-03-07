@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { COMMANDS, OptionType } from "../commands";
 
 describe("COMMANDS", () => {
-  it("defines exactly 5 commands", () => {
-    expect(COMMANDS).toHaveLength(5);
+  it("defines exactly 8 commands", () => {
+    expect(COMMANDS).toHaveLength(8);
   });
 
   it("includes all required command names", () => {

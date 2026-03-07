@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { checkRateLimit } from "../rate-limit";
+import { checkRateLimit, RATE_LIMIT_TIERS } from "../rate-limit";
 
 function makeRequest(ip?: string): Request {
   const headers = new Headers();
@@ -20,17 +20,17 @@ describe("checkRateLimit", () => {
     const rateLimiter = makeMockRateLimiter(true);
     const request = makeRequest("1.2.3.4");
 
-    const result = await checkRateLimit(request, rateLimiter, 100);
+    const result = await checkRateLimit(request, rateLimiter, RATE_LIMIT_TIERS.api);
 
     expect(result).toBeNull();
-    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: "1.2.3.4" });
+    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: "api:1.2.3.4" });
   });
 
   it("returns a 429 response when the rate limit is exceeded", async () => {
     const rateLimiter = makeMockRateLimiter(false);
     const request = makeRequest("1.2.3.4");
 
-    const result = await checkRateLimit(request, rateLimiter, 100);
+    const result = await checkRateLimit(request, rateLimiter, RATE_LIMIT_TIERS.api);
 
     expect(result).not.toBeNull();
     expect(result!.status).toBe(429);
@@ -42,19 +42,19 @@ describe("checkRateLimit", () => {
     const rateLimiter = makeMockRateLimiter(true);
     const request = makeRequest(); // no IP header
 
-    await checkRateLimit(request, rateLimiter, 100);
+    await checkRateLimit(request, rateLimiter, RATE_LIMIT_TIERS.api);
 
-    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: "unknown" });
+    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: "api:unknown" });
   });
 
   it("passes distinct IPs as distinct rate limit keys", async () => {
     const rateLimiter = makeMockRateLimiter(true);
 
-    await checkRateLimit(makeRequest("10.0.0.1"), rateLimiter, 100);
-    await checkRateLimit(makeRequest("10.0.0.2"), rateLimiter, 100);
+    await checkRateLimit(makeRequest("10.0.0.1"), rateLimiter, RATE_LIMIT_TIERS.api);
+    await checkRateLimit(makeRequest("10.0.0.2"), rateLimiter, RATE_LIMIT_TIERS.api);
 
     expect(rateLimiter.limit).toHaveBeenCalledTimes(2);
-    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: "10.0.0.1" });
-    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: "10.0.0.2" });
+    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: "api:10.0.0.1" });
+    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: "api:10.0.0.2" });
   });
 });

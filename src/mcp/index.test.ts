@@ -1,4 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
+
+// Mock Cloudflare-specific modules that use cloudflare: protocol (not available in Node.js)
+vi.mock("agents/mcp", () => ({
+  createMcpHandler: vi.fn().mockReturnValue(vi.fn()),
+}));
+
 import { createMcpServer, createCortexMcpHandler } from "./index";
 import type { Env } from "@/shared/types";
 
@@ -24,6 +30,11 @@ function createMockEnv(): Env {
       run: vi.fn().mockResolvedValue({
         data: [Array.from({ length: 1024 }, () => 0.1)],
       }),
+    } as any,
+    VECTORIZE: {
+      query: vi.fn().mockResolvedValue({ matches: [] }),
+      upsert: vi.fn(),
+      deleteByIds: vi.fn(),
     } as any,
     EMBEDDING_MODEL: "@cf/baai/bge-large-en-v1.5",
     CHAT_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",

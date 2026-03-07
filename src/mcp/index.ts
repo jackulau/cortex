@@ -17,7 +17,8 @@ export function createMcpServer(env: Env): McpServer {
   const semanticMemory = new SemanticMemory(
     env.DB,
     env.AI,
-    env.EMBEDDING_MODEL
+    env.EMBEDDING_MODEL,
+    env.VECTORIZE
   );
 
   // ── remember ─────────────────────────────────────────────────

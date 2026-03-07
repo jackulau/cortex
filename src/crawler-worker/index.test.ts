@@ -172,8 +172,8 @@ describe("handleCrawlRequest", () => {
   });
 
   it("skips digest entry when content hash matches lastHash", async () => {
-    // Need to compute the hash of the extracted content to set lastHash
-    const extractedContent = "Test Page Test content here";
+    // Content extracted from <article> by extractMainContent (title not included)
+    const extractedContent = "Test content here";
     const expectedHash = await computeSha256(extractedContent);
 
     const message = createCrawlMessage({ lastHash: expectedHash });

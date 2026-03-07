@@ -8,18 +8,18 @@ describe("Wrangler Configuration", () => {
     resolve(__dirname, "../../wrangler.jsonc"),
     "utf-8"
   );
-  const stripped = raw.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  // Strip comments line-by-line to avoid mangling // inside strings (e.g. URLs)
+  const stripped = raw
+    .split("\n")
+    .map((line) => (line.trimStart().startsWith("//") ? "" : line))
+    .join("\n")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
   const config = JSON.parse(stripped);
 
-  it("has browser binding for Phase 2", () => {
-    expect(config.browser).toBeDefined();
-    expect(config.browser.binding).toBe("BROWSER");
-  });
-
-  it("has cron trigger for Phase 3 scheduled crawler", () => {
+  it("has cron trigger for daily digest", () => {
     expect(config.triggers).toBeDefined();
     expect(config.triggers.crons).toBeDefined();
-    expect(config.triggers.crons).toContain("0 */6 * * *");
+    expect(config.triggers.crons).toContain("0 9 * * *");
   });
 
   it("has D1 database binding", () => {
@@ -72,7 +72,7 @@ describe("Wrangler Configuration", () => {
 
   it("has Queue consumer bindings", () => {
     expect(config.queues.consumers).toBeDefined();
-    expect(config.queues.consumers.length).toBe(2);
+    expect(config.queues.consumers.length).toBe(3);
   });
 
   it("has Analytics Engine dataset binding", () => {

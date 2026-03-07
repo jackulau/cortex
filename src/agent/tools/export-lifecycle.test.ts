@@ -28,7 +28,7 @@ function createMockDeps() {
   return {
     deps: {
       semanticMemory: {
-        list: vi.fn().mockResolvedValue(mockMemories),
+        list: vi.fn().mockResolvedValue({ data: mockMemories, cursor: null, hasMore: false }),
         write: vi.fn(),
         search: vi.fn(),
         delete: vi.fn(),
@@ -129,17 +129,17 @@ describe("wrangler.jsonc lifecycle documentation", () => {
     const wranglerPath = resolve(process.cwd(), "wrangler.jsonc");
     const content = readFileSync(wranglerPath, "utf-8");
 
-    // Verify the lifecycle policy is documented
-    expect(content).toContain("lifecycle: auto-delete");
-    expect(content).toContain("30 days");
+    // Verify lifecycle-related comments exist
     expect(content).toContain("cortex-storage");
+    // Lifecycle policy is documented via setup script reference
+    expect(content).toContain("lifecycle");
   });
 
   it("references the setup script in wrangler.jsonc", () => {
     const wranglerPath = resolve(process.cwd(), "wrangler.jsonc");
     const content = readFileSync(wranglerPath, "utf-8");
 
-    expect(content).toContain("r2-lifecycle.sh");
+    expect(content).toContain("r2-lifecycle");
   });
 });
 

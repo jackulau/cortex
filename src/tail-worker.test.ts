@@ -226,7 +226,7 @@ describe("buildDiscordPayload", () => {
 
 describe("postToDiscord", () => {
   it("sends POST request with JSON payload to webhook URL", async () => {
-    const mockResponse = new Response("ok", { status: 204 });
+    const mockResponse = new Response(null, { status: 200 });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse);
 
     const payload = { content: "test error" };
@@ -237,7 +237,7 @@ describe("postToDiscord", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    expect(resp.status).toBe(204);
+    expect(resp.status).toBe(200);
 
     fetchSpy.mockRestore();
   });
@@ -293,7 +293,7 @@ describe("tail handler", () => {
   });
 
   it("posts to Discord when errors are found", async () => {
-    const mockResponse = new Response("ok", { status: 204 });
+    const mockResponse = new Response(null, { status: 200 });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse);
 
     await tailWorker.tail(

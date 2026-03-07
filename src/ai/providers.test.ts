@@ -284,9 +284,9 @@ describe("providers", () => {
     });
 
     it("uses CLAUDE_MODEL env var for model selection", async () => {
-      const { createAnthropic } = require("@ai-sdk/anthropic");
+      const mod = await import("@ai-sdk/anthropic");
       const mockFactory = vi.fn().mockReturnValue({ type: "custom-model" });
-      (createAnthropic as any).mockReturnValue(mockFactory);
+      vi.mocked(mod.createAnthropic).mockReturnValue(mockFactory as any);
 
       const env = {
         ANTHROPIC_API_KEY: "sk-test-key",
@@ -300,9 +300,9 @@ describe("providers", () => {
     });
 
     it("uses default Claude model when CLAUDE_MODEL is not set", async () => {
-      const { createAnthropic } = require("@ai-sdk/anthropic");
+      const mod = await import("@ai-sdk/anthropic");
       const mockFactory = vi.fn().mockReturnValue({ type: "default-model" });
-      (createAnthropic as any).mockReturnValue(mockFactory);
+      vi.mocked(mod.createAnthropic).mockReturnValue(mockFactory as any);
 
       const env = {
         ANTHROPIC_API_KEY: "sk-test-key",

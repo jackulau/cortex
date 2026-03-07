@@ -15,8 +15,16 @@ vi.mock("./semantic", () => ({
   })),
 }));
 
+// Mock the providers module
+vi.mock("@/ai/providers", () => ({
+  getChatProvider: vi.fn().mockReturnValue({
+    chat: vi.fn().mockResolvedValue("mock response"),
+  }),
+}));
+
 import { consolidateTurn } from "./consolidation";
 import { SemanticMemory } from "./semantic";
+import { getChatProvider } from "@/ai/providers";
 
 // ── Mock Env ─────────────────────────────────────────────────
 
@@ -26,6 +34,7 @@ function createMockEnv() {
     AI: { run: vi.fn() } as any,
     CHAT_MODEL: "test-model",
     EMBEDDING_MODEL: "test-embed",
+    VECTORIZE: {} as any,
     STORAGE: {} as any,
     BROWSER: {} as any,
     CortexAgent: {} as any,
@@ -64,8 +73,12 @@ describe("processConsolidationMessage", () => {
     expect(SemanticMemory).toHaveBeenCalledWith(
       env.DB,
       env.AI,
-      env.EMBEDDING_MODEL
+      env.EMBEDDING_MODEL,
+      env.VECTORIZE
     );
+
+    // getChatProvider should be called with env
+    expect(getChatProvider).toHaveBeenCalledWith(env);
 
     // consolidateTurn should be called with correct arguments
     expect(mockConsolidate).toHaveBeenCalledWith(
@@ -73,7 +86,9 @@ describe("processConsolidationMessage", () => {
       env.CHAT_MODEL,
       expect.any(Object), // SemanticMemory instance
       "What is TypeScript?",
-      "TypeScript is a typed superset of JavaScript."
+      "TypeScript is a typed superset of JavaScript.",
+      env,
+      expect.any(Object) // ChatProvider instance
     );
   });
 

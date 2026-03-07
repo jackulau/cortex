@@ -435,7 +435,8 @@ describe("CortexAgent hibernation", () => {
         expect.anything(), // DB
         expect.anything(), // AI
         "@cf/baai/bge-large-en-v1.5", // EMBEDDING_MODEL
-        expect.anything() // VECTORIZE
+        expect.anything(), // VECTORIZE
+        expect.any(String) // namespaceId
       );
     });
 
@@ -444,9 +445,9 @@ describe("CortexAgent hibernation", () => {
       const request = new Request("https://do/api/rules", { method: "GET" });
       await (agent as any).fetch(request);
 
-      // Both managers receive the D1 binding
-      expect(WatchListManager).toHaveBeenCalledWith(expect.anything());
-      expect(DigestManager).toHaveBeenCalledWith(expect.anything());
+      // Both managers receive the D1 binding and namespaceId
+      expect(WatchListManager).toHaveBeenCalledWith(expect.anything(), expect.any(String));
+      expect(DigestManager).toHaveBeenCalledWith(expect.anything(), expect.any(String));
     });
 
     it("KVCache uses external KV binding (hibernation-safe)", async () => {
