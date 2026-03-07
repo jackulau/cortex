@@ -16,6 +16,14 @@ const MEMORY_TYPE_CHOICES = [
   { name: "Note", value: "note" },
 ];
 
+/** Research frequency choices */
+const RESEARCH_FREQUENCY_CHOICES = [
+  { name: "Daily", value: "daily" },
+  { name: "Weekly", value: "weekly" },
+  { name: "Biweekly", value: "biweekly" },
+  { name: "Monthly", value: "monthly" },
+];
+
 /** All slash commands exposed by Cortex */
 export const COMMANDS = [
   {
@@ -76,6 +84,41 @@ export const COMMANDS = [
   {
     name: "digest",
     description: "Get your latest digest",
+  },
+  {
+    name: "research-schedule",
+    description: "Schedule recurring research on a topic",
+    options: [
+      {
+        name: "topic",
+        type: OptionType.STRING,
+        description: "The topic to research (e.g. 'AI safety developments')",
+        required: true,
+      },
+      {
+        name: "frequency",
+        type: OptionType.STRING,
+        description: "How often to run research",
+        required: false,
+        choices: RESEARCH_FREQUENCY_CHOICES,
+      },
+    ],
+  },
+  {
+    name: "research-list",
+    description: "List active scheduled research tasks",
+  },
+  {
+    name: "research-cancel",
+    description: "Cancel a scheduled research task",
+    options: [
+      {
+        name: "id",
+        type: OptionType.STRING,
+        description: "The research task ID to cancel",
+        required: true,
+      },
+    ],
   },
 ] as const;
 

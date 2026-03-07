@@ -29,7 +29,8 @@ export function createExportTools(deps: {
       }),
       execute: async ({ format }) => {
         // Fetch all semantic memories
-        const memories = await semanticMemory.list({ limit: 10000 });
+        const result = await semanticMemory.list({ limit: 10000 });
+        const memories = result.data;
 
         if (memories.length === 0) {
           return { key: "", url: "", count: 0, message: "No memories to export." };
@@ -81,7 +82,8 @@ export function createExportTools(deps: {
       inputSchema: z.object({}),
       execute: async () => {
         // Gather all data
-        const memories = await semanticMemory.list({ limit: 10000 });
+        const memoriesResult = await semanticMemory.list({ limit: 10000 });
+        const memories = memoriesResult.data;
         const rules = proceduralMemory.getAll();
         const sessions = episodicMemory.listSessions(1000);
 

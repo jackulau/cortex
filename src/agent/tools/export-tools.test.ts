@@ -18,6 +18,9 @@ const mockMemories: SemanticEntry[] = [
     tags: ["programming", "typescript"],
     createdAt: "2024-01-15T10:30:00Z",
     updatedAt: "2024-01-15T10:30:00Z",
+    relevanceScore: 1.0,
+    lastAccessedAt: null,
+    accessCount: 0,
   },
   {
     id: "mem-2",
@@ -27,6 +30,9 @@ const mockMemories: SemanticEntry[] = [
     tags: ["science"],
     createdAt: "2024-01-16T11:00:00Z",
     updatedAt: "2024-01-16T11:00:00Z",
+    relevanceScore: 1.0,
+    lastAccessedAt: null,
+    accessCount: 0,
   },
   {
     id: "mem-3",
@@ -36,6 +42,9 @@ const mockMemories: SemanticEntry[] = [
     tags: ["work", "cortex"],
     createdAt: "2024-01-17T09:00:00Z",
     updatedAt: "2024-01-17T09:00:00Z",
+    relevanceScore: 1.0,
+    lastAccessedAt: null,
+    accessCount: 0,
   },
 ];
 
@@ -75,7 +84,7 @@ function createMockDeps() {
   return {
     deps: {
       semanticMemory: {
-        list: vi.fn().mockResolvedValue(mockMemories),
+        list: vi.fn().mockResolvedValue({ data: mockMemories, cursor: null, hasMore: false }),
         write: vi.fn(),
         search: vi.fn(),
         delete: vi.fn(),
@@ -230,7 +239,7 @@ describe("createExportTools", () => {
 
     it("handles empty memory list", async () => {
       const mock = createMockDeps();
-      (mock.deps.semanticMemory.list as any).mockResolvedValue([]);
+      (mock.deps.semanticMemory.list as any).mockResolvedValue({ data: [], cursor: null, hasMore: false });
       const emptyTools = createExportTools(mock.deps);
 
       const result = await emptyTools.exportMarkdown.execute(

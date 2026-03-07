@@ -1,0 +1,12 @@
+{
+  "name": "cortex-tail-worker",
+  "main": "index.ts",
+  "compatibility_date": "2025-03-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Environment variables
+  "vars": {
+    // Set via `wrangler secret put DISCORD_ALERT_WEBHOOK_URL -c src/tail-worker/wrangler.jsonc`
+    "DISCORD_ALERT_WEBHOOK_URL": ""
+  }
+}

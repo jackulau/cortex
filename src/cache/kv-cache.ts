@@ -58,9 +58,10 @@ export class KVCache {
 
 // ── Cache key patterns ──────────────────────────────────────────
 export const CacheKeys = {
-  memoriesList: (type: string | undefined, limit: number) =>
-    `memories:list:${type || "all"}:${limit}`,
-  sessionsList: (limit: number) => `sessions:list:${limit}`,
+  memoriesList: (type: string | undefined, limit: number, cursor?: string) =>
+    `memories:list:${type || "all"}:${limit}:${cursor || "first"}`,
+  sessionsList: (limit: number, cursor?: string) =>
+    `sessions:list:${limit}:${cursor || "first"}`,
   rulesAll: () => "rules:all",
   watchlistAll: () => "watchlist:all",
   digestUndelivered: () => "digest:undelivered",

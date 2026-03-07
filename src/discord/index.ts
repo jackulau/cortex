@@ -6,6 +6,7 @@
 import type { Env } from "@/shared/types";
 import { verifyDiscordRequest } from "./verify";
 import { SemanticMemory } from "@/memory/semantic";
+import { ResearchScheduler, type ResearchFrequency } from "@/research/scheduler";
 import type { CommandName } from "./commands";
 
 // ── Discord Interaction Types ───────────────────────────────────
@@ -137,6 +138,22 @@ async function processCommand(
       case "digest":
         content = handleDigest();
         break;
+      case "research-schedule":
+        content = await handleResearchSchedule(
+          options.get("topic") ?? "",
+          (options.get("frequency") as ResearchFrequency) ?? "weekly",
+          env
+        );
+        break;
+      case "research-list":
+        content = await handleResearchList(env);
+        break;
+      case "research-cancel":
+        content = await handleResearchCancel(
+          options.get("id") ?? "",
+          env
+        );
+        break;
       default:
         content = `Unknown command: ${commandName}`;
     }
@@ -253,6 +270,52 @@ async function handleResearch(_url: string): Promise<string> {
 function handleDigest(): string {
   // Digest is not yet fully implemented (requires Phase 3 watch lists)
   return "Digest is not yet available. The watch list and scheduled crawler features are coming in Phase 3.";
+}
+
+async function handleResearchSchedule(
+  topic: string,
+  frequency: ResearchFrequency,
+  env: DiscordEnv
+): Promise<string> {
+  if (!topic) return "Please provide a research topic.";
+
+  const scheduler = new ResearchScheduler(env.DB);
+  const id = await scheduler.create({ topic, frequency });
+
+  return `Scheduled recurring research on **"${topic}"** — running **${frequency}**.\n*Task ID: \`${id}\`*\n\nCortex will automatically research this topic and store findings in memory.`;
+}
+
+async function handleResearchList(env: DiscordEnv): Promise<string> {
+  const scheduler = new ResearchScheduler(env.DB);
+  const tasks = await scheduler.list(true);
+
+  if (tasks.length === 0) {
+    return "No active research tasks. Use `/research-schedule` to create one.";
+  }
+
+  const formatted = tasks
+    .map(
+      (t, i) =>
+        `${i + 1}. **${t.topic}** — ${t.frequency} *(ID: \`${t.id.slice(0, 8)}...\`)*\n   Next run: ${t.nextRunAt}${t.lastRunAt ? ` | Last run: ${t.lastRunAt}` : ""}`
+    )
+    .join("\n");
+
+  return `**Active Research Tasks (${tasks.length}):**\n\n${formatted}`;
+}
+
+async function handleResearchCancel(
+  id: string,
+  env: DiscordEnv
+): Promise<string> {
+  if (!id) return "Please provide a research task ID.";
+
+  const scheduler = new ResearchScheduler(env.DB);
+  const cancelled = await scheduler.cancel(id);
+
+  if (cancelled) {
+    return `Research task \`${id}\` has been cancelled.`;
+  }
+  return `Research task \`${id}\` not found or already cancelled.`;
 }
 
 // ── Webhook Follow-up ───────────────────────────────────────────

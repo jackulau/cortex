@@ -1,4 +1,9 @@
-import type { EpisodicEntry, SessionSummary, SqlFn } from "@/shared/types";
+import type {
+  EpisodicEntry,
+  SessionSummary,
+  PaginatedResponse,
+  SqlFn,
+} from "@/shared/types";
 
 /**
  * Episodic memory — full conversation history stored in DO SQLite.
@@ -42,6 +47,36 @@ export class EpisodicMemory {
       SELECT id as sessionId, started_at as startedAt, ended_at as endedAt,
              topics, turn_count as turnCount, summary
       FROM sessions ORDER BY started_at DESC LIMIT ${limit}`;
+  }
+
+  /** List sessions with cursor-based pagination. */
+  listSessionsPaginated(
+    limit = 20,
+    cursor?: string
+  ): PaginatedResponse<SessionSummary> {
+    const fetchLimit = limit + 1;
+    const rows = cursor
+      ? this.sql<SessionSummary>`
+          SELECT id as sessionId, started_at as startedAt, ended_at as endedAt,
+                 topics, turn_count as turnCount, summary
+          FROM sessions WHERE started_at < ${cursor}
+          ORDER BY started_at DESC LIMIT ${fetchLimit}`
+      : this.sql<SessionSummary>`
+          SELECT id as sessionId, started_at as startedAt, ended_at as endedAt,
+                 topics, turn_count as turnCount, summary
+          FROM sessions ORDER BY started_at DESC LIMIT ${fetchLimit}`;
+
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit);
+
+    return {
+      data,
+      cursor:
+        hasMore && data.length > 0
+          ? data[data.length - 1].startedAt
+          : null,
+      hasMore,
+    };
   }
 
   /** Create or update a session record. */

@@ -1,0 +1,11 @@
+{
+  // Tail Worker — receives error-level logs from the main Cortex worker
+  // and forwards them to a Discord webhook.
+  //
+  // Deploy: npx wrangler deploy --config wrangler.tail.jsonc
+  // Set webhook: npx wrangler secret put DISCORD_ERROR_WEBHOOK --config wrangler.tail.jsonc
+  "name": "cortex-tail-worker",
+  "main": "src/tail-worker.ts",
+  "compatibility_date": "2025-03-01",
+  "compatibility_flags": ["nodejs_compat"]
+}

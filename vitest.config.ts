@@ -10,6 +10,6 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}", "src/**/__tests__/**/*.test.{ts,tsx}"],
-    exclude: ["node_modules", "dist"],
+    exclude: ["node_modules", "dist", "src/__tests__/integration/**"],
   },
 });

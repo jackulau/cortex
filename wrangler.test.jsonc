@@ -1,0 +1,41 @@
+{
+  // Minimal wrangler config for integration tests.
+  // Includes only bindings supported by Miniflare (D1, KV, R2, Queues).
+  // AI, Vectorize, Browser, Services, Workflows, and Analytics are mocked in tests.
+
+  "name": "cortex-test",
+  "main": "src/server.ts",
+  "compatibility_date": "2025-03-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // D1 Database
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cortex-db-test",
+      "database_id": "test-db-id"
+    }
+  ],
+
+  // KV — response and embedding cache
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "test-cache-kv-id"
+    }
+  ],
+
+  // R2 Storage
+  "r2_buckets": [
+    {
+      "binding": "STORAGE",
+      "bucket_name": "cortex-storage-test"
+    }
+  ],
+
+  // Environment variables
+  "vars": {
+    "EMBEDDING_MODEL": "@cf/baai/bge-large-en-v1.5",
+    "CHAT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+  }
+}

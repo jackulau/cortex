@@ -11,16 +11,23 @@
     "db:migrate:local": "wrangler d1 migrations apply cortex-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply cortex-db --remote",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
+    "deploy:tail": "wrangler deploy -c src/tail-worker/wrangler.jsonc",
+    "deploy:crawler": "wrangler deploy -c src/crawler-worker/wrangler.jsonc",
+    "deploy:all": "npm run deploy:crawler && npm run deploy:tail && npm run deploy",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^1.2.12",
+    "@anthropic-ai/sdk": "^0.39.0",
     "@cloudflare/ai-chat": "^0.1.8",
     "@cloudflare/puppeteer": "^0.0.14",
     "@cloudflare/vite-plugin": "^1.26.0",
     "@cloudflare/workers-types": "^4.20250303.0",
     "agents": "^0.7.3",
     "ai": "^6.0.0",
+    "d3": "^7.9.0",
     "hono": "^4.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -28,6 +35,8 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.9.0",
+    "@types/d3": "^7.4.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",

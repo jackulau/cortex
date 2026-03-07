@@ -3,22 +3,29 @@ import { KnowledgeGraph } from "./components/KnowledgeGraph";
 import { MemoryExplorer } from "./components/MemoryExplorer";
 import { WatchList } from "./components/WatchList";
 import { SessionHistory } from "./components/SessionHistory";
+import { DigestViewer } from "./components/DigestViewer";
+import { ChatInterface } from "./components/ChatInterface";
+import { NamespaceSelector } from "./components/NamespaceSelector";
 
-type Tab = "graph" | "memories" | "watchlist" | "history";
+type Tab = "chat" | "graph" | "memories" | "watchlist" | "history" | "digest";
 
 const TABS: Array<{ id: Tab; label: string }> = [
+  { id: "chat", label: "Chat" },
   { id: "graph", label: "Knowledge Graph" },
   { id: "memories", label: "Memory Explorer" },
   { id: "watchlist", label: "Watch List" },
   { id: "history", label: "History" },
+  { id: "digest", label: "Digest" },
 ];
 
 /**
- * Dashboard main app with tabbed navigation.
+ * Dashboard main app with tabbed navigation and namespace selector.
  * Provides visualization and management of Cortex's knowledge base.
+ * Namespace selector allows switching between knowledge spaces.
  */
 export function Dashboard() {
-  const [activeTab, setActiveTab] = useState<Tab>("graph");
+  const [activeTab, setActiveTab] = useState<Tab>("chat");
+  const [activeNamespace, setActiveNamespace] = useState("default");
 
   return (
     <div className="dashboard-app">
@@ -35,13 +42,21 @@ export function Dashboard() {
             </button>
           ))}
         </nav>
+        <div style={{ marginLeft: "auto", position: "relative" }}>
+          <NamespaceSelector
+            activeNamespace={activeNamespace}
+            onNamespaceChange={setActiveNamespace}
+          />
+        </div>
       </header>
 
       <main className="dashboard-content">
+        {activeTab === "chat" && <ChatInterface />}
         {activeTab === "graph" && <KnowledgeGraph />}
         {activeTab === "memories" && <MemoryExplorer />}
         {activeTab === "watchlist" && <WatchList />}
         {activeTab === "history" && <SessionHistory />}
+        {activeTab === "digest" && <DigestViewer />}
       </main>
 
       <style>{dashboardStyles}</style>
@@ -108,6 +123,13 @@ const dashboardStyles = `
     flex: 1;
     padding: 1.5rem;
     overflow-y: auto;
+  }
+
+  /* Namespace selector */
+  .namespace-selector {
+    display: flex;
+    align-items: center;
+    position: relative;
   }
 
   /* Shared component styles */
@@ -225,5 +247,29 @@ const dashboardStyles = `
     text-align: center;
     color: #f87171;
     padding: 2rem;
+  }
+
+  /* Edit mode styles */
+  .edit-mode {
+    border-color: #6366f1;
+  }
+
+  /* Similarity score badge */
+  .score-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  /* Session timeline */
+  .timeline {
+    position: relative;
+    padding-left: 1.5rem;
+  }
+
+  /* Pulse animation for active session */
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
   }
 `;

@@ -1,0 +1,47 @@
+{
+  "name": "cortex-crawler",
+  "main": "index.ts",
+  "compatibility_date": "2025-03-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // D1 Database (shared with main worker)
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cortex-db",
+      "database_id": "2839c0c7-d433-4ce5-9e06-6f7cbee18528"
+    }
+  ],
+
+  // R2 Storage (shared with main worker)
+  "r2_buckets": [
+    {
+      "binding": "STORAGE",
+      "bucket_name": "cortex-storage"
+    }
+  ],
+
+  // Workers AI
+  "ai": {
+    "binding": "AI"
+  },
+
+  // Browser Rendering — CPU-intensive, isolated in this worker
+  "browser": {
+    "binding": "BROWSER"
+  },
+
+  // Vectorize — semantic memory vector index
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "cortex-memories"
+    }
+  ],
+
+  // Environment variables
+  "vars": {
+    "EMBEDDING_MODEL": "@cf/baai/bge-large-en-v1.5",
+    "CHAT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+  }
+}

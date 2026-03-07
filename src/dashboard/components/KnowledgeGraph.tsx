@@ -1,22 +1,31 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import type { SemanticEntry } from "@/shared/types";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import * as d3 from "d3";
 
-interface GraphNode {
+// ── Types ───────────────────────────────────────────────────────
+
+interface GraphNode extends d3.SimulationNodeDatum {
   id: string;
-  content: string;
-  type: SemanticEntry["type"];
+  label: string;
+  type: string;
   tags: string[];
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
+  relevanceScore: number;
+  createdAt: string;
+  source: string;
 }
 
-interface GraphEdge {
-  source: string;
-  target: string;
-  sharedTag: string;
+interface GraphEdge extends d3.SimulationLinkDatum<GraphNode> {
+  source: string | GraphNode;
+  target: string | GraphNode;
+  relationship: "tag" | "source" | "temporal";
+  weight: number;
 }
+
+interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+// ── Constants ───────────────────────────────────────────────────
 
 const TYPE_COLORS: Record<string, string> = {
   fact: "#60a5fa",
@@ -26,189 +35,403 @@ const TYPE_COLORS: Record<string, string> = {
   summary: "#fb7185",
 };
 
-const NODE_RADIUS = 8;
-const WIDTH = 900;
-const HEIGHT = 600;
+const EDGE_STYLES: Record<string, string> = {
+  tag: "6,4",       // dashed
+  source: "none",   // solid
+  temporal: "2,3",  // dotted
+};
+
+const EDGE_COLORS: Record<string, string> = {
+  tag: "#4a4a6a",
+  source: "#3a3a5a",
+  temporal: "#2a2a4a",
+};
+
+const BASE_NODE_RADIUS = 6;
+const MAX_NODE_RADIUS = 18;
 
 /**
- * Knowledge Graph — D3-inspired force-directed graph rendered with React SVG.
- * Nodes represent semantic memories, edges connect memories sharing tags.
+ * Knowledge Graph — Force-directed graph visualization using D3.
+ * Fetches from /api/knowledge-graph and renders memories as nodes
+ * connected by tag, source, and temporal relationships.
  */
 export function KnowledgeGraph() {
-  const [memories, setMemories] = useState<SemanticEntry[]>([]);
-  const [nodes, setNodes] = useState<GraphNode[]>([]);
-  const [edges, setEdges] = useState<GraphEdge[]>([]);
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const simulationRef = useRef<d3.Simulation<GraphNode, GraphEdge> | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Filters
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
-  const animationRef = useRef<number>(0);
-  const nodesRef = useRef<GraphNode[]>([]);
+  const [tagFilter, setTagFilter] = useState<string>("all");
+  const [timeRange, setTimeRange] = useState<number>(0); // 0 = all time
 
-  // Fetch memories from API
-  useEffect(() => {
-    fetchMemories();
-  }, []);
+  // Selection
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeData, setSelectedNodeData] = useState<GraphNode | null>(null);
 
-  const fetchMemories = async () => {
+  // ── Fetch graph data ────────────────────────────────────────
+
+  const fetchGraph = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/memories");
+      const res = await fetch("/api/knowledge-graph?limit=200");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setMemories(data.memories || []);
+      const data: GraphData = await res.json();
+      setGraphData(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch memories");
+      setError(err instanceof Error ? err.message : "Failed to fetch graph data");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Build graph from memories
   useEffect(() => {
-    if (memories.length === 0) return;
+    fetchGraph();
+  }, [fetchGraph]);
 
-    // Filter memories
-    let filtered = memories;
-    if (typeFilter !== "all") {
-      filtered = filtered.filter((m) => m.type === typeFilter);
+  // ── Derive available tags from data ─────────────────────────
+
+  const availableTags = useMemo(() => {
+    if (!graphData) return [];
+    const tagSet = new Set<string>();
+    for (const node of graphData.nodes) {
+      for (const tag of node.tags) {
+        tagSet.add(tag);
+      }
     }
+    return Array.from(tagSet).sort();
+  }, [graphData]);
+
+  // ── Apply filters ───────────────────────────────────────────
+
+  const filteredData = useMemo((): GraphData | null => {
+    if (!graphData) return null;
+
+    let nodes = graphData.nodes;
+
+    // Type filter
+    if (typeFilter !== "all") {
+      nodes = nodes.filter((n) => n.type === typeFilter);
+    }
+
+    // Tag filter
+    if (tagFilter !== "all") {
+      nodes = nodes.filter((n) => n.tags.includes(tagFilter));
+    }
+
+    // Time range filter (days ago)
+    if (timeRange > 0) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - timeRange);
+      const cutoffStr = cutoff.toISOString();
+      nodes = nodes.filter((n) => n.createdAt >= cutoffStr);
+    }
+
+    // Search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        (m) =>
-          m.content.toLowerCase().includes(term) ||
-          m.tags.some((t) => t.toLowerCase().includes(term))
+      nodes = nodes.filter(
+        (n) =>
+          n.label.toLowerCase().includes(term) ||
+          n.tags.some((t) => t.toLowerCase().includes(term))
       );
     }
 
-    // Create nodes with random initial positions
-    const graphNodes: GraphNode[] = filtered.map((m) => ({
-      id: m.id,
-      content: m.content,
-      type: m.type,
-      tags: m.tags,
-      x: WIDTH / 2 + (Math.random() - 0.5) * 300,
-      y: HEIGHT / 2 + (Math.random() - 0.5) * 200,
-      vx: 0,
-      vy: 0,
-    }));
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const edges = graphData.edges.filter((e) => {
+      const srcId = typeof e.source === "string" ? e.source : e.source.id;
+      const tgtId = typeof e.target === "string" ? e.target : e.target.id;
+      return nodeIds.has(srcId) && nodeIds.has(tgtId);
+    });
 
-    // Create edges based on shared tags
-    const graphEdges: GraphEdge[] = [];
-    const nodeIds = new Set(graphNodes.map((n) => n.id));
+    // Deep copy nodes so D3 can mutate x/y without affecting state
+    const nodesCopy = nodes.map((n) => ({ ...n }));
 
-    for (let i = 0; i < graphNodes.length; i++) {
-      for (let j = i + 1; j < graphNodes.length; j++) {
-        const shared = graphNodes[i].tags.filter((t) =>
-          graphNodes[j].tags.includes(t)
-        );
-        if (shared.length > 0) {
-          graphEdges.push({
-            source: graphNodes[i].id,
-            target: graphNodes[j].id,
-            sharedTag: shared[0],
-          });
-        }
-      }
+    return { nodes: nodesCopy, edges: edges.map((e) => ({ ...e })) };
+  }, [graphData, typeFilter, tagFilter, timeRange, searchTerm]);
+
+  // ── D3 rendering ────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!filteredData || !svgRef.current || !containerRef.current) return;
+
+    const svg = d3.select(svgRef.current);
+    const container = containerRef.current;
+    const width = container.clientWidth;
+    const height = Math.max(500, container.clientHeight);
+
+    // Clear previous content
+    svg.selectAll("*").remove();
+    if (simulationRef.current) {
+      simulationRef.current.stop();
     }
 
-    nodesRef.current = graphNodes;
-    setNodes(graphNodes);
-    setEdges(graphEdges);
+    svg.attr("viewBox", `0 0 ${width} ${height}`);
 
-    // Start force simulation
-    startSimulation(graphNodes, graphEdges);
+    const { nodes, edges } = filteredData;
+
+    if (nodes.length === 0) return;
+
+    // Create a group for zoom/pan
+    const g = svg.append("g").attr("class", "graph-container");
+
+    // Zoom behavior
+    const zoom = d3
+      .zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.1, 4])
+      .on("zoom", (event) => {
+        g.attr("transform", event.transform);
+      });
+
+    svg.call(zoom);
+
+    // Double-click to reset zoom
+    svg.on("dblclick.zoom", () => {
+      svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+    });
+
+    // Defs for arrow markers
+    const defs = svg.append("defs");
+
+    // Edge line style definitions
+    defs
+      .append("filter")
+      .attr("id", "glow")
+      .append("feGaussianBlur")
+      .attr("stdDeviation", 3)
+      .attr("result", "coloredBlur");
+
+    // Compute node radius from relevance
+    const maxRelevance = d3.max(nodes, (n) => n.relevanceScore) || 1;
+    const radiusScale = d3
+      .scaleLinear()
+      .domain([0, maxRelevance])
+      .range([BASE_NODE_RADIUS, MAX_NODE_RADIUS]);
+
+    // ── Links ──────────────────────────────────────────────
+
+    const linkGroup = g.append("g").attr("class", "links");
+
+    const link = linkGroup
+      .selectAll("line")
+      .data(edges)
+      .enter()
+      .append("line")
+      .attr("stroke", (d) => EDGE_COLORS[d.relationship] || "#2a2a4a")
+      .attr("stroke-width", (d) => Math.max(1, d.weight * 0.5))
+      .attr("stroke-opacity", 0.5)
+      .attr("stroke-dasharray", (d) => EDGE_STYLES[d.relationship] || "none");
+
+    // ── Nodes ──────────────────────────────────────────────
+
+    const nodeGroup = g.append("g").attr("class", "nodes");
+
+    const node = nodeGroup
+      .selectAll("g")
+      .data(nodes)
+      .enter()
+      .append("g")
+      .attr("class", "node")
+      .style("cursor", "pointer")
+      .call(
+        d3
+          .drag<SVGGElement, GraphNode>()
+          .on("start", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+          })
+          .on("drag", (event, d) => {
+            d.fx = event.x;
+            d.fy = event.y;
+          })
+          .on("end", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+          })
+      );
+
+    // Node circles
+    node
+      .append("circle")
+      .attr("r", (d) => radiusScale(d.relevanceScore))
+      .attr("fill", (d) => TYPE_COLORS[d.type] || "#6366f1")
+      .attr("stroke", "transparent")
+      .attr("stroke-width", 2)
+      .attr("opacity", 0.85);
+
+    // Hover tooltip
+    node
+      .on("mouseover", function (event, d) {
+        const tooltip = tooltipRef.current;
+        if (!tooltip) return;
+
+        tooltip.style.display = "block";
+        tooltip.style.left = `${event.pageX + 12}px`;
+        tooltip.style.top = `${event.pageY - 12}px`;
+        tooltip.innerHTML = `
+          <div style="font-weight:600;margin-bottom:4px;color:${TYPE_COLORS[d.type] || "#6366f1"}">${d.type}</div>
+          <div style="margin-bottom:4px">${d.label}</div>
+          ${d.tags.length > 0 ? `<div style="color:#8888a0;font-size:0.7rem">${d.tags.join(", ")}</div>` : ""}
+          <div style="color:#8888a0;font-size:0.65rem;margin-top:4px">${new Date(d.createdAt).toLocaleString()}</div>
+        `;
+
+        // Highlight this node
+        d3.select(this).select("circle").attr("stroke", "#fff").attr("opacity", 1);
+      })
+      .on("mousemove", function (event) {
+        const tooltip = tooltipRef.current;
+        if (!tooltip) return;
+        tooltip.style.left = `${event.pageX + 12}px`;
+        tooltip.style.top = `${event.pageY - 12}px`;
+      })
+      .on("mouseout", function (event, d) {
+        const tooltip = tooltipRef.current;
+        if (tooltip) tooltip.style.display = "none";
+
+        const isSelected = selectedNodeId === d.id;
+        d3.select(this)
+          .select("circle")
+          .attr("stroke", isSelected ? "#fff" : "transparent")
+          .attr("opacity", 0.85);
+      })
+      .on("click", function (event, d) {
+        event.stopPropagation();
+        handleNodeClick(d, nodes, edges, node, link, radiusScale);
+      });
+
+    // Search highlight
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      node.each(function (d) {
+        const matches =
+          d.label.toLowerCase().includes(term) ||
+          d.tags.some((t) => t.toLowerCase().includes(term));
+        if (matches) {
+          d3.select(this)
+            .select("circle")
+            .attr("stroke", "#fff")
+            .attr("stroke-width", 3)
+            .attr("filter", "url(#glow)");
+        }
+      });
+    }
+
+    // ── Force simulation ───────────────────────────────────
+
+    const simulation = d3
+      .forceSimulation<GraphNode>(nodes)
+      .force(
+        "link",
+        d3
+          .forceLink<GraphNode, GraphEdge>(edges)
+          .id((d) => d.id)
+          .distance(80)
+          .strength((d) => Math.min(0.3, d.weight * 0.1))
+      )
+      .force("charge", d3.forceManyBody().strength(-120).distanceMax(300))
+      .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("collision", d3.forceCollide<GraphNode>().radius((d) => radiusScale(d.relevanceScore) + 2))
+      .alphaDecay(0.02);
+
+    simulationRef.current = simulation;
+
+    simulation.on("tick", () => {
+      link
+        .attr("x1", (d) => (d.source as GraphNode).x ?? 0)
+        .attr("y1", (d) => (d.source as GraphNode).y ?? 0)
+        .attr("x2", (d) => (d.target as GraphNode).x ?? 0)
+        .attr("y2", (d) => (d.target as GraphNode).y ?? 0);
+
+      node.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
+    });
+
+    // Click on background to deselect
+    svg.on("click", () => {
+      setSelectedNodeId(null);
+      setSelectedNodeData(null);
+      // Reset all visual states
+      node
+        .select("circle")
+        .attr("stroke", "transparent")
+        .attr("opacity", 0.85)
+        .attr("filter", null);
+      link.attr("stroke-opacity", 0.5);
+    });
 
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      simulation.stop();
     };
-  }, [memories, searchTerm, typeFilter]);
+  }, [filteredData, searchTerm]);
 
-  const startSimulation = useCallback(
-    (simNodes: GraphNode[], simEdges: GraphEdge[]) => {
-      let iteration = 0;
-      const maxIterations = 200;
-      const alpha = 0.3;
-      const repulsion = 500;
-      const springLength = 80;
-      const springStrength = 0.05;
-      const centerForce = 0.01;
-      const damping = 0.9;
+  // ── Node click handler ──────────────────────────────────────
 
-      const nodeMap = new Map(simNodes.map((n) => [n.id, n]));
+  const handleNodeClick = useCallback(
+    (
+      d: GraphNode,
+      nodes: GraphNode[],
+      edges: GraphEdge[],
+      nodeSelection: d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown>,
+      linkSelection: d3.Selection<SVGLineElement, GraphEdge, SVGGElement, unknown>,
+      radiusScale: d3.ScaleLinear<number, number>
+    ) => {
+      setSelectedNodeId(d.id);
+      setSelectedNodeData(d);
 
-      const tick = () => {
-        if (iteration >= maxIterations) return;
+      // Find connected node IDs
+      const connectedIds = new Set<string>();
+      connectedIds.add(d.id);
+      for (const edge of edges) {
+        const srcId = typeof edge.source === "string" ? edge.source : edge.source.id;
+        const tgtId = typeof edge.target === "string" ? edge.target : edge.target.id;
+        if (srcId === d.id) connectedIds.add(tgtId);
+        if (tgtId === d.id) connectedIds.add(srcId);
+      }
 
-        // Apply forces
-        for (const node of simNodes) {
-          // Center gravity
-          node.vx += (WIDTH / 2 - node.x) * centerForce;
-          node.vy += (HEIGHT / 2 - node.y) * centerForce;
+      // Dim unconnected nodes
+      nodeSelection.each(function (n) {
+        const isConnected = connectedIds.has(n.id);
+        d3.select(this)
+          .select("circle")
+          .transition()
+          .duration(200)
+          .attr("opacity", isConnected ? 1 : 0.15)
+          .attr("stroke", n.id === d.id ? "#fff" : "transparent");
+      });
 
-          // Repulsion between all nodes
-          for (const other of simNodes) {
-            if (node.id === other.id) continue;
-            const dx = node.x - other.x;
-            const dy = node.y - other.y;
-            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            const force = repulsion / (dist * dist);
-            node.vx += (dx / dist) * force * alpha;
-            node.vy += (dy / dist) * force * alpha;
-          }
-        }
-
-        // Spring forces along edges
-        for (const edge of simEdges) {
-          const source = nodeMap.get(edge.source);
-          const target = nodeMap.get(edge.target);
-          if (!source || !target) continue;
-
-          const dx = target.x - source.x;
-          const dy = target.y - source.y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = (dist - springLength) * springStrength;
-
-          source.vx += (dx / dist) * force;
-          source.vy += (dy / dist) * force;
-          target.vx -= (dx / dist) * force;
-          target.vy -= (dy / dist) * force;
-        }
-
-        // Apply velocity and damping
-        for (const node of simNodes) {
-          node.vx *= damping;
-          node.vy *= damping;
-          node.x += node.vx;
-          node.y += node.vy;
-
-          // Constrain to bounds
-          node.x = Math.max(NODE_RADIUS, Math.min(WIDTH - NODE_RADIUS, node.x));
-          node.y = Math.max(
-            NODE_RADIUS,
-            Math.min(HEIGHT - NODE_RADIUS, node.y)
-          );
-        }
-
-        setNodes([...simNodes]);
-        iteration++;
-
-        if (iteration < maxIterations) {
-          animationRef.current = requestAnimationFrame(tick);
-        }
-      };
-
-      animationRef.current = requestAnimationFrame(tick);
+      // Dim unconnected edges
+      linkSelection
+        .transition()
+        .duration(200)
+        .attr("stroke-opacity", (e) => {
+          const srcId = typeof e.source === "string" ? e.source : e.source.id;
+          const tgtId = typeof e.target === "string" ? e.target : e.target.id;
+          return srcId === d.id || tgtId === d.id ? 0.8 : 0.05;
+        });
     },
     []
   );
 
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  // ── Connection count for selected node ──────────────────────
+
+  const connectionCount = useMemo(() => {
+    if (!selectedNodeData || !filteredData) return 0;
+    return filteredData.edges.filter((e) => {
+      const srcId = typeof e.source === "string" ? e.source : e.source.id;
+      const tgtId = typeof e.target === "string" ? e.target : e.target.id;
+      return srcId === selectedNodeData.id || tgtId === selectedNodeData.id;
+    }).length;
+  }, [selectedNodeData, filteredData]);
+
+  // ── Render ──────────────────────────────────────────────────
 
   if (loading) {
     return <div className="loading-text">Loading knowledge graph...</div>;
@@ -219,15 +442,19 @@ export function KnowledgeGraph() {
       <div className="error-text">
         Error loading graph: {error}
         <br />
-        <button className="btn" onClick={fetchMemories} style={{ marginTop: "1rem" }}>
+        <button className="btn" onClick={fetchGraph} style={{ marginTop: "1rem" }}>
           Retry
         </button>
       </div>
     );
   }
 
+  const nodeCount = filteredData?.nodes.length ?? 0;
+  const edgeCount = filteredData?.edges.length ?? 0;
+
   return (
     <div>
+      {/* Controls panel */}
       <div className="panel" style={{ marginBottom: "1rem" }}>
         <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
           <input
@@ -236,89 +463,98 @@ export function KnowledgeGraph() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <div style={{ display: "flex", gap: "0.25rem" }}>
-            {["all", "fact", "preference", "event", "note", "summary"].map(
-              (type) => (
-                <button
-                  key={type}
-                  className={`btn ${typeFilter === type ? "btn-primary" : ""}`}
-                  onClick={() => setTypeFilter(type)}
-                >
-                  {type}
-                </button>
-              )
-            )}
-          </div>
           <span className="text-dim text-sm">
-            {nodes.length} nodes, {edges.length} connections
+            {nodeCount} nodes, {edgeCount} connections
           </span>
+        </div>
+
+        <div style={{ display: "flex", gap: "1rem", marginTop: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+          {/* Type filter */}
+          <div style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+            <span className="text-dim text-sm" style={{ marginRight: "0.25rem" }}>
+              Type:
+            </span>
+            {["all", "fact", "preference", "event", "note", "summary"].map((type) => (
+              <button
+                key={type}
+                className={`btn ${typeFilter === type ? "btn-primary" : ""}`}
+                onClick={() => setTypeFilter(type)}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+
+          {/* Tag filter */}
+          {availableTags.length > 0 && (
+            <div style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+              <span className="text-dim text-sm" style={{ marginRight: "0.25rem" }}>
+                Tag:
+              </span>
+              <select
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                style={{
+                  padding: "0.4rem 0.75rem",
+                  borderRadius: "0.375rem",
+                  border: "1px solid #1e1e2e",
+                  background: "#14141f",
+                  color: "#e4e4ef",
+                  fontSize: "0.8rem",
+                  cursor: "pointer",
+                }}
+              >
+                <option value="all">all tags</option>
+                {availableTags.map((tag) => (
+                  <option key={tag} value={tag}>
+                    {tag}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Time range slider */}
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <span className="text-dim text-sm">Time:</span>
+            <input
+              type="range"
+              min="0"
+              max="365"
+              value={timeRange}
+              onChange={(e) => setTimeRange(parseInt(e.target.value, 10))}
+              style={{ width: "120px", accentColor: "#6366f1" }}
+            />
+            <span className="text-dim text-sm" style={{ minWidth: "60px" }}>
+              {timeRange === 0 ? "all" : `${timeRange}d`}
+            </span>
+          </div>
         </div>
       </div>
 
+      {/* Graph + detail panel */}
       <div className="panel" style={{ display: "flex", gap: "1rem" }}>
-        <div style={{ flex: 1, overflow: "hidden" }}>
-          {nodes.length === 0 ? (
+        <div ref={containerRef} style={{ flex: 1, overflow: "hidden", position: "relative", minHeight: "500px" }}>
+          {nodeCount === 0 ? (
             <div className="empty-state-text">
               No memories to display. Start chatting with Cortex to build your knowledge graph.
             </div>
           ) : (
             <svg
-              width={WIDTH}
-              height={HEIGHT}
-              viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+              ref={svgRef}
               style={{
                 width: "100%",
-                height: "auto",
-                maxHeight: "600px",
+                height: "100%",
+                minHeight: "500px",
                 background: "#0a0a0f",
                 borderRadius: "0.375rem",
               }}
-            >
-              {/* Edges */}
-              {edges.map((edge) => {
-                const source = nodeMap.get(edge.source);
-                const target = nodeMap.get(edge.target);
-                if (!source || !target) return null;
-                return (
-                  <line
-                    key={`${edge.source}-${edge.target}`}
-                    x1={source.x}
-                    y1={source.y}
-                    x2={target.x}
-                    y2={target.y}
-                    stroke="#1e1e2e"
-                    strokeWidth={1}
-                    strokeOpacity={0.6}
-                  />
-                );
-              })}
-
-              {/* Nodes */}
-              {nodes.map((node) => (
-                <g
-                  key={node.id}
-                  transform={`translate(${node.x},${node.y})`}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => setSelectedNode(node)}
-                >
-                  <circle
-                    r={NODE_RADIUS}
-                    fill={TYPE_COLORS[node.type] || "#6366f1"}
-                    stroke={
-                      selectedNode?.id === node.id ? "#fff" : "transparent"
-                    }
-                    strokeWidth={2}
-                    opacity={0.85}
-                  />
-                  <title>{node.content.slice(0, 100)}</title>
-                </g>
-              ))}
-            </svg>
+            />
           )}
         </div>
 
         {/* Detail panel */}
-        {selectedNode && (
+        {selectedNodeData && (
           <div
             style={{
               width: "280px",
@@ -328,27 +564,44 @@ export function KnowledgeGraph() {
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
-              <span className={`chip chip-${selectedNode.type}`}>
-                {selectedNode.type}
+              <span className={`chip chip-${selectedNodeData.type}`}>
+                {selectedNodeData.type}
               </span>
               <button
                 className="btn"
-                onClick={() => setSelectedNode(null)}
+                onClick={() => {
+                  setSelectedNodeId(null);
+                  setSelectedNodeData(null);
+                }}
                 style={{ padding: "0.2rem 0.5rem", fontSize: "0.7rem" }}
               >
                 Close
               </button>
             </div>
             <p style={{ fontSize: "0.875rem", lineHeight: 1.5, marginBottom: "0.75rem" }}>
-              {selectedNode.content}
+              {selectedNodeData.label}
             </p>
-            {selectedNode.tags.length > 0 && (
+            <div className="text-dim text-sm" style={{ marginBottom: "0.5rem" }}>
+              {connectionCount} connections
+            </div>
+            <div className="text-dim text-sm" style={{ marginBottom: "0.5rem" }}>
+              Source: {selectedNodeData.source}
+            </div>
+            <div className="text-dim text-sm" style={{ marginBottom: "0.75rem" }}>
+              {new Date(selectedNodeData.createdAt).toLocaleString()}
+            </div>
+            {selectedNodeData.tags.length > 0 && (
               <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
-                {selectedNode.tags.map((tag) => (
+                {selectedNodeData.tags.map((tag) => (
                   <span
                     key={tag}
                     className="chip"
-                    style={{ background: "#1e1e2e", color: "#8888a0" }}
+                    style={{
+                      background: "#1e1e2e",
+                      color: "#8888a0",
+                      cursor: "pointer",
+                    }}
+                    onClick={() => setTagFilter(tag)}
                   >
                     {tag}
                   </span>
@@ -363,11 +616,13 @@ export function KnowledgeGraph() {
       <div
         style={{
           display: "flex",
-          gap: "1rem",
+          gap: "1.5rem",
           marginTop: "0.75rem",
           justifyContent: "center",
+          flexWrap: "wrap",
         }}
       >
+        {/* Node types */}
         {Object.entries(TYPE_COLORS).map(([type, color]) => (
           <div
             key={type}
@@ -384,7 +639,40 @@ export function KnowledgeGraph() {
             <span className="text-dim text-sm">{type}</span>
           </div>
         ))}
+        <span className="text-dim text-sm" style={{ margin: "0 0.25rem" }}>|</span>
+        {/* Edge types */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+          <svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#4a4a6a" strokeWidth="2" strokeDasharray="6,4" /></svg>
+          <span className="text-dim text-sm">tag</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+          <svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#3a3a5a" strokeWidth="2" /></svg>
+          <span className="text-dim text-sm">source</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+          <svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#2a2a4a" strokeWidth="2" strokeDasharray="2,3" /></svg>
+          <span className="text-dim text-sm">temporal</span>
+        </div>
       </div>
+
+      {/* Tooltip (portal-style positioned div) */}
+      <div
+        ref={tooltipRef}
+        style={{
+          display: "none",
+          position: "fixed",
+          pointerEvents: "none",
+          background: "#1a1a2e",
+          border: "1px solid #2a2a4a",
+          borderRadius: "0.375rem",
+          padding: "0.5rem 0.75rem",
+          fontSize: "0.8rem",
+          color: "#e4e4ef",
+          maxWidth: "300px",
+          zIndex: 9999,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+        }}
+      />
     </div>
   );
 }

@@ -2,34 +2,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { processCrawlMessage } from "./crawl-consumer";
 import type { CrawlMessage } from "./queue-types";
 
-// Mock the extractUrl import from browser/extract
-vi.mock("../browser/extract", () => ({
-  extractUrl: vi.fn(),
-}));
-
-import { extractUrl } from "../browser/extract";
-
 // ── Mock Env ─────────────────────────────────────────────────
 
 function createMockEnv() {
-  const mockStmt = {
-    bind: vi.fn().mockReturnThis(),
-    run: vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
-    all: vi.fn().mockResolvedValue({ results: [] }),
-    first: vi.fn().mockResolvedValue(null),
-  };
-
   return {
-    DB: {
-      prepare: vi.fn().mockReturnValue(mockStmt),
-      batch: vi.fn().mockResolvedValue([]),
-      _stmt: mockStmt,
+    CRAWLER_SERVICE: {
+      fetch: vi.fn().mockResolvedValue(
+        Response.json({ ok: true, hash: "abc123" }, { status: 200 })
+      ),
     },
+    // Other env bindings (not used by the forwarding consumer, but present for type compatibility)
+    DB: {} as any,
     STORAGE: {} as any,
     BROWSER: {} as any,
-    AI: {
-      run: vi.fn().mockResolvedValue({ response: "Summary of changes" }),
-    },
+    AI: {} as any,
     CHAT_MODEL: "test-model",
     EMBEDDING_MODEL: "test-embed",
     CortexAgent: {} as any,
@@ -65,132 +51,84 @@ describe("processCrawlMessage", () => {
     env = createMockEnv();
   });
 
-  it("extracts URL content and updates last_checked", async () => {
-    const mockExtract = extractUrl as unknown as ReturnType<typeof vi.fn>;
-    mockExtract.mockResolvedValue({
-      url: "https://example.com",
-      title: "Example",
-      description: "",
-      content: "Page content here",
-      extractedAt: new Date().toISOString(),
-    });
-
+  it("forwards crawl message to CRAWLER_SERVICE via fetch", async () => {
     const msg = createCrawlMessage();
     await processCrawlMessage(msg, env);
 
-    // extractUrl should be called for the item's URL
-    expect(mockExtract).toHaveBeenCalledWith(
-      env.BROWSER,
-      env.STORAGE,
-      "https://example.com"
-    );
+    expect(env.CRAWLER_SERVICE.fetch).toHaveBeenCalledTimes(1);
 
-    // Should call DB to update last_checked (updateLastChecked uses prepare + bind + run)
-    // At minimum, prepare should have been called for the update
-    expect(env.DB.prepare).toHaveBeenCalled();
+    // Verify the request was a POST with JSON body
+    const fetchCall = env.CRAWLER_SERVICE.fetch.mock.calls[0][0] as Request;
+    expect(fetchCall.method).toBe("POST");
+    expect(fetchCall.headers.get("Content-Type")).toBe("application/json");
+
+    // Verify the body contains the crawl message
+    const body = await fetchCall.clone().json();
+    expect(body).toEqual(msg);
   });
 
-  it("detects change and creates digest entry when hash differs", async () => {
-    const mockExtract = extractUrl as unknown as ReturnType<typeof vi.fn>;
-    mockExtract.mockResolvedValue({
-      url: "https://example.com",
-      title: "Example",
-      description: "",
-      content: "New content",
-      extractedAt: new Date().toISOString(),
+  it("sends the complete watch item data in the request body", async () => {
+    const msg = createCrawlMessage({
+      id: "item-42",
+      url: "https://special.example.com",
+      label: "Special Page",
+      lastHash: "previous-hash",
     });
 
-    // Item with no previous hash — always counts as changed
-    const msg = createCrawlMessage({ lastHash: null });
     await processCrawlMessage(msg, env);
 
-    // AI should be called to summarize
-    expect(env.AI.run).toHaveBeenCalledWith(
-      "test-model",
-      expect.objectContaining({
-        messages: expect.arrayContaining([
-          expect.objectContaining({ role: "system" }),
-          expect.objectContaining({
-            role: "user",
-            content: expect.stringContaining("Example"),
-          }),
-        ]),
-      })
-    );
-
-    // Digest entry should be inserted (INSERT INTO digest_entries)
-    const prepareCalls = env.DB.prepare.mock.calls.map(
-      (c: string[]) => c[0]
-    );
-    const hasDigestInsert = prepareCalls.some(
-      (sql: string) =>
-        typeof sql === "string" && sql.includes("digest_entries")
-    );
-    expect(hasDigestInsert).toBe(true);
+    const fetchCall = env.CRAWLER_SERVICE.fetch.mock.calls[0][0] as Request;
+    const body = await fetchCall.clone().json();
+    expect(body.watchItem.id).toBe("item-42");
+    expect(body.watchItem.url).toBe("https://special.example.com");
+    expect(body.watchItem.label).toBe("Special Page");
+    expect(body.watchItem.lastHash).toBe("previous-hash");
   });
 
-  it("skips digest creation when hash matches (no change)", async () => {
-    // We need the hash of "Same content" to match lastHash.
-    // Since crypto.subtle.digest is available in vitest (node env), compute it.
-    const encoder = new TextEncoder();
-    const data = encoder.encode("Same content");
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const expectedHash = hashArray
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-
-    const mockExtract = extractUrl as unknown as ReturnType<typeof vi.fn>;
-    mockExtract.mockResolvedValue({
-      url: "https://example.com",
-      title: "Example",
-      description: "",
-      content: "Same content",
-      extractedAt: new Date().toISOString(),
-    });
-
-    const msg = createCrawlMessage({ lastHash: expectedHash });
-    await processCrawlMessage(msg, env);
-
-    // AI should NOT be called (no change detected)
-    expect(env.AI.run).not.toHaveBeenCalled();
-
-    // updateLastChecked should still be called
-    expect(env.DB.prepare).toHaveBeenCalled();
+  it("completes successfully when crawler service returns 200", async () => {
+    const msg = createCrawlMessage();
+    // Should not throw
+    await expect(processCrawlMessage(msg, env)).resolves.toBeUndefined();
   });
 
-  it("propagates errors to allow queue retry", async () => {
-    const mockExtract = extractUrl as unknown as ReturnType<typeof vi.fn>;
-    mockExtract.mockRejectedValue(new Error("Network error"));
+  it("throws error when crawler service returns non-200 status", async () => {
+    env.CRAWLER_SERVICE.fetch.mockResolvedValue(
+      new Response(JSON.stringify({ error: "Browser timeout" }), { status: 500 })
+    );
 
     const msg = createCrawlMessage();
-
     await expect(processCrawlMessage(msg, env)).rejects.toThrow(
-      "Network error"
+      "Crawler service returned 500"
     );
   });
 
-  it("truncates content to 2000 chars for digest changes field", async () => {
-    const longContent = "x".repeat(5000);
-    const mockExtract = extractUrl as unknown as ReturnType<typeof vi.fn>;
-    mockExtract.mockResolvedValue({
-      url: "https://example.com",
-      title: "Example",
-      description: "",
-      content: longContent,
-      extractedAt: new Date().toISOString(),
-    });
+  it("throws error when crawler service returns 400", async () => {
+    env.CRAWLER_SERVICE.fetch.mockResolvedValue(
+      new Response(JSON.stringify({ error: "Invalid crawl message" }), { status: 400 })
+    );
 
-    const msg = createCrawlMessage({ lastHash: null });
+    const msg = createCrawlMessage();
+    await expect(processCrawlMessage(msg, env)).rejects.toThrow(
+      "Crawler service returned 400"
+    );
+  });
+
+  it("does not directly access DB, AI, or BROWSER bindings", async () => {
+    // The consumer should only forward via CRAWLER_SERVICE,
+    // not process the crawl locally
+    const dbPrepare = vi.fn();
+    const aiRun = vi.fn();
+    const browserFetch = vi.fn();
+
+    env.DB = { prepare: dbPrepare } as any;
+    env.AI = { run: aiRun } as any;
+    env.BROWSER = { fetch: browserFetch } as any;
+
+    const msg = createCrawlMessage();
     await processCrawlMessage(msg, env);
 
-    // The digest insert's changes parameter should be truncated
-    // Find the bind call that includes the truncated content
-    const bindCalls = env.DB._stmt.bind.mock.calls;
-    const hasSlicedContent = bindCalls.some(
-      (args: any[]) =>
-        typeof args[3] === "string" && args[3].length === 2000
-    );
-    expect(hasSlicedContent).toBe(true);
+    expect(dbPrepare).not.toHaveBeenCalled();
+    expect(aiRun).not.toHaveBeenCalled();
+    expect(browserFetch).not.toHaveBeenCalled();
   });
 });
